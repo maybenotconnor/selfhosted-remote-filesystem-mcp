@@ -6,10 +6,8 @@ A secure, self-hostable MCP server for remote file system operations
 
 import os
 import sys
-import json
-import asyncio
+from pathlib import Path
 from typing import Dict, Any, List, Optional
-from dotenv import load_dotenv
 from fastmcp import FastMCP, Context, ToolError
 from fastmcp.server.dependencies import get_access_token, AccessToken
 
@@ -18,44 +16,36 @@ from path_validator import PathValidator
 from auth_config import setup_authentication, check_scope
 import file_operations as file_ops
 
-# Load environment variables
-load_dotenv()
+# Get configuration from environment
+data_dir = os.getenv("DATA_DIR", "/data")
+config_dir = os.getenv("CONFIG_DIR", "/config")
+port = int(os.getenv("PORT", "8080"))
 
-# Initialize path validator with allowed directories
-allowed_dirs = os.getenv("ALLOWED_DIRECTORIES", "/data").split(",")
-allowed_dirs = [d.strip() for d in allowed_dirs if d.strip()]
+# Ensure directories exist
+Path(data_dir).mkdir(exist_ok=True, parents=True)
+Path(config_dir).mkdir(exist_ok=True, parents=True)
 
-if not allowed_dirs:
-    print("❌ ERROR: No allowed directories configured!")
-    print("Set ALLOWED_DIRECTORIES environment variable")
-    sys.exit(1)
+# Initialize path validator with single data directory
+path_validator = PathValidator(data_dir)
 
-path_validator = PathValidator(allowed_dirs)
-
-# Setup authentication
+# Setup authentication (always enabled)
 auth = setup_authentication()
 
 # Initialize FastMCP server
 mcp = FastMCP(
     name="Remote Filesystem MCP",
-    instructions="""
-    This is a secure remote filesystem MCP server that provides file operations.
-    All paths are validated against allowed directories for security.
-    Authentication is required for all operations.
-    """,
+    instructions="Secure file system access via MCP. All operations require JWT authentication.",
     auth=auth
 )
 
 # Print server information
-print("\n" + "="*60)
-print("🚀 REMOTE FILESYSTEM MCP SERVER")
-print("="*60)
-print(f"📁 Allowed Directories:")
-for dir_path in path_validator.allowed_directories:
-    print(f"   - {dir_path}")
-print(f"🔒 Authentication: {'Enabled' if auth else 'DISABLED ⚠️'}")
-print(f"🌐 Transport: HTTP/SSE")
-print("="*60 + "\n")
+print("\n" + "━"*60)
+print("🚀 Remote Filesystem MCP Server")
+print("━"*60)
+print(f"📁 Data directory: {data_dir}")
+print(f"🔐 Authentication: Enabled")
+print(f"📍 Server ready at: http://localhost:{port}/mcp")
+print("━"*60 + "\n")
 
 
 # ============================================================================
@@ -71,7 +61,7 @@ async def read_file(
     """Read the contents of a file.
     
     Args:
-        path: Path to the file (absolute or relative to allowed directories)
+        path: Path to the file (absolute or relative to data directory)
         encoding: Optional text encoding (default: utf-8)
         ctx: MCP context
         
@@ -79,10 +69,9 @@ async def read_file(
         File contents and metadata
     """
     # Check authentication scope
-    if auth:
-        token: AccessToken = get_access_token()
-        if not check_scope("read", token.scopes):
-            raise ToolError("Insufficient permissions: 'read' scope required")
+    token: AccessToken = get_access_token()
+    if not check_scope("read", token.scopes):
+        raise ToolError("Insufficient permissions: 'read' scope required")
     
     # Validate path
     validated_path = path_validator.validate_path(path)
@@ -107,7 +96,7 @@ async def write_file(
     """Write content to a file.
     
     Args:
-        path: Path to the file (absolute or relative to allowed directories)
+        path: Path to the file (absolute or relative to data directory)
         content: Content to write (text or base64 encoded binary)
         encoding: Text encoding (default: utf-8)
         create_dirs: Whether to create parent directories if they don't exist
@@ -117,14 +106,9 @@ async def write_file(
         Operation result
     """
     # Check authentication scope
-    if auth:
-        token: AccessToken = get_access_token()
-        if not check_scope("write", token.scopes):
-            raise ToolError("Insufficient permissions: 'write' scope required")
-    
-    # Check if write operations are enabled
-    if os.getenv("ENABLE_WRITE", "true").lower() != "true":
-        raise ToolError("Write operations are disabled on this server")
+    token: AccessToken = get_access_token()
+    if not check_scope("write", token.scopes):
+        raise ToolError("Insufficient permissions: 'write' scope required")
     
     # Validate path
     validated_path = path_validator.validate_path(path)
@@ -148,7 +132,7 @@ async def list_directory(
     """List files and directories.
     
     Args:
-        path: Directory path (defaults to first allowed directory)
+        path: Directory path (defaults to data directory root)
         recursive: Whether to list recursively
         pattern: Optional glob pattern to filter results
         ctx: MCP context
@@ -157,14 +141,13 @@ async def list_directory(
         List of files and directories with metadata
     """
     # Check authentication scope
-    if auth:
-        token: AccessToken = get_access_token()
-        if not check_scope("read", token.scopes):
-            raise ToolError("Insufficient permissions: 'read' scope required")
+    token: AccessToken = get_access_token()
+    if not check_scope("read", token.scopes):
+        raise ToolError("Insufficient permissions: 'read' scope required")
     
-    # Default to first allowed directory if no path specified
+    # Default to data directory if no path specified
     if not path:
-        path = path_validator.allowed_directories[0]
+        path = data_dir
     
     # Validate path
     validated_path = path_validator.validate_path(path)
@@ -200,14 +183,9 @@ async def edit_file(
         Operation result with replacement count
     """
     # Check authentication scope
-    if auth:
-        token: AccessToken = get_access_token()
-        if not check_scope("write", token.scopes):
-            raise ToolError("Insufficient permissions: 'write' scope required")
-    
-    # Check if write operations are enabled
-    if os.getenv("ENABLE_WRITE", "true").lower() != "true":
-        raise ToolError("Write operations are disabled on this server")
+    token: AccessToken = get_access_token()
+    if not check_scope("write", token.scopes):
+        raise ToolError("Insufficient permissions: 'write' scope required")
     
     # Validate path
     validated_path = path_validator.validate_path(path)
@@ -238,14 +216,9 @@ async def create_directory(
         Operation result
     """
     # Check authentication scope
-    if auth:
-        token: AccessToken = get_access_token()
-        if not check_scope("write", token.scopes):
-            raise ToolError("Insufficient permissions: 'write' scope required")
-    
-    # Check if write operations are enabled
-    if os.getenv("ENABLE_WRITE", "true").lower() != "true":
-        raise ToolError("Write operations are disabled on this server")
+    token: AccessToken = get_access_token()
+    if not check_scope("write", token.scopes):
+        raise ToolError("Insufficient permissions: 'write' scope required")
     
     # Validate path
     validated_path = path_validator.validate_path(path)
@@ -278,14 +251,9 @@ async def move_file(
         Operation result
     """
     # Check authentication scope
-    if auth:
-        token: AccessToken = get_access_token()
-        if not check_scope("write", token.scopes):
-            raise ToolError("Insufficient permissions: 'write' scope required")
-    
-    # Check if write operations are enabled
-    if os.getenv("ENABLE_WRITE", "true").lower() != "true":
-        raise ToolError("Write operations are disabled on this server")
+    token: AccessToken = get_access_token()
+    if not check_scope("write", token.scopes):
+        raise ToolError("Insufficient permissions: 'write' scope required")
     
     # Validate paths
     validated_source = path_validator.validate_path(source)
@@ -318,14 +286,9 @@ async def delete_file(
         Operation result
     """
     # Check authentication scope
-    if auth:
-        token: AccessToken = get_access_token()
-        if not check_scope("write", token.scopes):
-            raise ToolError("Insufficient permissions: 'write' scope required")
-    
-    # Check if write operations are enabled
-    if os.getenv("ENABLE_WRITE", "true").lower() != "true":
-        raise ToolError("Write operations are disabled on this server")
+    token: AccessToken = get_access_token()
+    if not check_scope("write", token.scopes):
+        raise ToolError("Insufficient permissions: 'write' scope required")
     
     # Validate path
     validated_path = path_validator.validate_path(path)
@@ -360,14 +323,13 @@ async def search_files(
         List of matching files with metadata
     """
     # Check authentication scope
-    if auth:
-        token: AccessToken = get_access_token()
-        if not check_scope("read", token.scopes):
-            raise ToolError("Insufficient permissions: 'read' scope required")
+    token: AccessToken = get_access_token()
+    if not check_scope("read", token.scopes):
+        raise ToolError("Insufficient permissions: 'read' scope required")
     
-    # Default to first allowed directory if no path specified
+    # Default to data directory if no path specified
     if not path:
-        path = path_validator.allowed_directories[0]
+        path = data_dir
     
     # Validate path
     validated_path = path_validator.validate_path(path)
@@ -404,10 +366,9 @@ async def get_file_info(
         Detailed file/directory information
     """
     # Check authentication scope
-    if auth:
-        token: AccessToken = get_access_token()
-        if not check_scope("read", token.scopes):
-            raise ToolError("Insufficient permissions: 'read' scope required")
+    token: AccessToken = get_access_token()
+    if not check_scope("read", token.scopes):
+        raise ToolError("Insufficient permissions: 'read' scope required")
     
     # Validate path
     validated_path = path_validator.validate_path(path)
@@ -441,13 +402,5 @@ async def health_check():
 # ============================================================================
 
 if __name__ == "__main__":
-    # Get port from environment or default
-    port = int(os.getenv("PORT", "8080"))
-    host = os.getenv("HOST", "0.0.0.0")
-    
-    print(f"🎯 Starting server on {host}:{port}")
-    print(f"📍 MCP endpoint: http://{host}:{port}/mcp")
-    print(f"💓 Health check: http://{host}:{port}/health")
-    
     # Run the server
-    mcp.run(transport="http", host=host, port=port)
+    mcp.run(transport="http", host="0.0.0.0", port=port)

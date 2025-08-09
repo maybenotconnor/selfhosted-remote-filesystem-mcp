@@ -1,4 +1,4 @@
-version: '3.8'
+version: '3'
 
 services:
   filesystem-mcp:
@@ -11,75 +11,14 @@ services:
       - "8080:8080"
     
     volumes:
-      # Mount your data directory - CHANGE THIS to your desired path
+      # Your data directory - this is what the MCP server can access
       - ./data:/data
       
-      # Optional: Mount additional directories
-      # - /path/on/host:/path/in/container
-      
-      # Optional: Mount JWT keys for persistent authentication
-      # - ./keys/public.pem:/app/keys/public.pem:ro
-      # - ./keys/private.pem:/app/keys/private.pem:ro
+      # Configuration directory for persistent JWT keys (auto-generated)
+      - ./config:/config
     
     environment:
-      # Allowed directories (comma-separated)
-      # Multiple directories can be specified
-      ALLOWED_DIRECTORIES: "/data"
-      
-      # Server configuration
+      # That's it! Just three simple settings:
+      DATA_DIR: "/data"
+      CONFIG_DIR: "/config"
       PORT: 8080
-      HOST: 0.0.0.0
-      
-      # Enable/disable write operations
-      ENABLE_WRITE: "true"
-      
-      # JWT Authentication settings
-      DISABLE_AUTH: "false"  # Set to "true" to disable authentication (NOT RECOMMENDED)
-      JWT_AUDIENCE: "filesystem-mcp"
-      JWT_ISSUER: "filesystem-mcp-server"
-      JWT_ALGORITHM: "RS256"
-      
-      # Optional: Provide JWT keys (as file paths or actual keys)
-      # JWT_PUBLIC_KEY: "/app/keys/public.pem"
-      # JWT_PRIVATE_KEY: "/app/keys/private.pem"
-      
-      # Or provide keys directly (not recommended for production)
-      # JWT_PUBLIC_KEY: |
-      #   -----BEGIN PUBLIC KEY-----
-      #   MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQ...
-      #   -----END PUBLIC KEY-----
-    
-    # Optional: Add to existing network
-    # networks:
-    #   - my-network
-    
-    # Resource limits
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 128M
-    
-    # Security options
-    security_opt:
-      - no-new-privileges:true
-    
-    # Read-only root filesystem for security
-    # Uncomment if you don't need to write to container filesystem
-    # read_only: true
-    
-    # Temporary filesystems for runtime data
-    tmpfs:
-      - /tmp
-    
-    labels:
-      - "com.filesystem-mcp.description=Remote Filesystem MCP Server"
-      - "com.filesystem-mcp.version=1.0.0"
-
-# Optional: Define external network
-# networks:
-#   my-network:
-#     external: true

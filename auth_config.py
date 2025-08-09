@@ -1,80 +1,103 @@
 import os
-import inspect
-from typing import Optional
+import json
+from pathlib import Path
+from typing import Optional, Dict
 from fastmcp.server.auth import BearerAuthProvider
 from fastmcp.server.auth.providers.bearer import RSAKeyPair
 
 
-def setup_authentication() -> Optional[BearerAuthProvider]:
-    """Set up authentication based on environment variables.
+def setup_authentication() -> BearerAuthProvider:
+    """Set up authentication with automatic key generation and persistence.
     
     Returns:
-        BearerAuthProvider if authentication is enabled, None otherwise
+        BearerAuthProvider configured with persistent keys
     """
-    # Check if authentication is disabled
-    if os.getenv("DISABLE_AUTH", "false").lower() == "true":
-        print("⚠️  WARNING: Authentication is disabled. Server is publicly accessible!")
-        return None
+    config_dir = Path(os.getenv("CONFIG_DIR", "/config"))
+    config_dir.mkdir(exist_ok=True, parents=True)
     
-    # Try to load existing keys from environment
-    public_key = os.getenv("JWT_PUBLIC_KEY")
-    private_key = os.getenv("JWT_PRIVATE_KEY")
+    keys_file = config_dir / "jwt_keys.json"
+    tokens_file = config_dir / "tokens.txt"
     
-    # If keys are provided as file paths, read them
-    if public_key and os.path.isfile(public_key):
-        with open(public_key, 'r') as f:
-            public_key = f.read()
-    
-    if private_key and os.path.isfile(private_key):
-        with open(private_key, 'r') as f:
-            private_key = f.read()
-    
-    # Generate keys if not provided
-    if not public_key:
-        print("🔐 Generating RSA key pair for authentication...")
+    # Try to load existing keys
+    if keys_file.exists():
+        print("🔐 Loading existing authentication keys...")
+        with open(keys_file, 'r') as f:
+            keys_data = json.load(f)
+        public_key = keys_data['public_key']
+        private_key = keys_data['private_key']
+        first_run = False
+    else:
+        # Generate new keys on first run
+        print("🔐 First run detected - generating authentication keys...")
         key_pair = RSAKeyPair.generate()
         public_key = key_pair.public_key
+        private_key = key_pair.private_key
         
-        # Generate a sample token for testing
-        if not private_key:
-            private_key = key_pair.private_key
-            
-            # Generate sample tokens with different scopes
-            audience = os.getenv("JWT_AUDIENCE", "filesystem-mcp")
-            issuer = os.getenv("JWT_ISSUER", "filesystem-mcp-server")
-            
-            admin_token = key_pair.create_token(
-                subject="admin",
-                issuer=issuer,
-                audience=audience,
-                scopes=["read", "write", "admin"]
-            )
-            
-            readonly_token = key_pair.create_token(
-                subject="readonly-user",
-                issuer=issuer,
-                audience=audience,
-                scopes=["read"]
-            )
-            
-            print("\n" + "="*60)
-            print("🔑 AUTHENTICATION TOKENS GENERATED")
-            print("="*60)
-            print("\n📝 Admin Token (full access):")
-            print(f"   {admin_token}")
-            print("\n📖 Read-Only Token:")
-            print(f"   {readonly_token}")
-            print("\n💡 Use these tokens in the Authorization header:")
-            print("   Authorization: Bearer <token>")
-            print("="*60 + "\n")
+        # Save keys for persistence
+        keys_data = {
+            'public_key': public_key,
+            'private_key': private_key
+        }
+        with open(keys_file, 'w') as f:
+            json.dump(keys_data, f, indent=2)
+        
+        # Set permissions for security
+        keys_file.chmod(0o600)
+        first_run = True
     
-    # Configure authentication provider
+    # Create auth provider
     auth = BearerAuthProvider(
         public_key=public_key,
-        issuer=os.getenv("JWT_ISSUER", "filesystem-mcp-server"),
-        audience=os.getenv("JWT_AUDIENCE", "filesystem-mcp"),
-        algorithm=os.getenv("JWT_ALGORITHM", "RS256")
+        issuer="filesystem-mcp",
+        audience="filesystem-mcp"
     )
+    
+    # Generate tokens (always on first run, or if tokens file missing)
+    if first_run or not tokens_file.exists():
+        key_pair = RSAKeyPair(public_key=public_key, private_key=private_key)
+        
+        # Generate three tokens with different access levels
+        tokens = {
+            'admin': key_pair.create_token(
+                subject="admin",
+                issuer="filesystem-mcp",
+                audience="filesystem-mcp",
+                scopes=["read", "write", "admin"]
+            ),
+            'readonly': key_pair.create_token(
+                subject="readonly",
+                issuer="filesystem-mcp",
+                audience="filesystem-mcp",
+                scopes=["read"]
+            )
+        }
+        
+        # Save tokens to file for reference
+        with open(tokens_file, 'w') as f:
+            f.write("=" * 60 + "\n")
+            f.write("🔑 AUTHENTICATION TOKENS\n")
+            f.write("=" * 60 + "\n\n")
+            f.write("Admin Token (full access):\n")
+            f.write(tokens['admin'] + "\n\n")
+            f.write("Read-Only Token:\n")
+            f.write(tokens['readonly'] + "\n\n")
+            f.write("=" * 60 + "\n")
+            f.write("Use in Authorization header: Bearer <token>\n")
+        
+        # Display tokens on first run
+        if first_run:
+            print("\n" + "━" * 60)
+            print("🔑 AUTHENTICATION TOKENS (save these!)")
+            print("━" * 60)
+            print("\nAdmin Token (full access):")
+            print(tokens['admin'])
+            print("\nRead-Only Token:")
+            print(tokens['readonly'])
+            print("\n" + "━" * 60)
+            print(f"💾 Tokens saved to: {tokens_file}")
+            print("━" * 60 + "\n")
+    else:
+        print(f"💡 Using existing tokens from: {tokens_file}")
     
     return auth
 

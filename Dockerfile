@@ -24,25 +24,20 @@ COPY file_operations.py .
 COPY path_validator.py .
 COPY auth_config.py .
 
-# Create data directory
-RUN mkdir -p /data
+# Create directories
+RUN mkdir -p /data /config
 
 # Create non-root user for security
 RUN adduser -D -u 1000 mcp && \
-    chown -R mcp:mcp /app /data
+    chown -R mcp:mcp /app /data /config
 
 # Switch to non-root user
 USER mcp
 
-# Environment variables with defaults
-ENV ALLOWED_DIRECTORIES="/data" \
-    PORT=8080 \
-    HOST=0.0.0.0 \
-    ENABLE_WRITE=true \
-    JWT_AUDIENCE=filesystem-mcp \
-    JWT_ISSUER=filesystem-mcp-server \
-    JWT_ALGORITHM=RS256 \
-    DISABLE_AUTH=false
+# Simple environment defaults
+ENV DATA_DIR=/data \
+    CONFIG_DIR=/config \
+    PORT=8080
 
 # Expose port
 EXPOSE 8080
