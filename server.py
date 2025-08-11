@@ -555,7 +555,7 @@ async def list_allowed_directories(
 # ============================================================================
 
 @mcp.custom_route("/health", methods=["GET"])
-async def health_check():
+async def health_check(request):
     """Health check endpoint for monitoring."""
     return {
         "status": "healthy",
