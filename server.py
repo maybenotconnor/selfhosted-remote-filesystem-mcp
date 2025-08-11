@@ -10,7 +10,8 @@ import json
 import asyncio
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Annotated
-from fastmcp import FastMCP, Context, ToolError
+from fastmcp import FastMCP, Context
+from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_access_token, AccessToken
 
 # Load local modules

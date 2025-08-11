@@ -2,15 +2,14 @@ import os
 import json
 from pathlib import Path
 from typing import Optional, Dict
-from fastmcp.server.auth import BearerAuthProvider
-from fastmcp.server.auth.providers.bearer import RSAKeyPair
+from fastmcp.server.auth.providers.jwt import JWTVerifier, RSAKeyPair
 
 
-def setup_authentication() -> BearerAuthProvider:
+def setup_authentication() -> JWTVerifier:
     """Set up authentication with automatic key generation and persistence.
     
     Returns:
-        BearerAuthProvider configured with persistent keys
+        JWTVerifier configured with persistent keys
     """
     config_dir = Path(os.getenv("CONFIG_DIR", "/config"))
     config_dir.mkdir(exist_ok=True, parents=True)
@@ -35,8 +34,8 @@ def setup_authentication() -> BearerAuthProvider:
         
         # Save keys for persistence
         keys_data = {
-            'public_key': public_key,
-            'private_key': private_key
+            'public_key': str(public_key),  # Convert SecretStr to string
+            'private_key': str(private_key)  # Convert SecretStr to string
         }
         with open(keys_file, 'w') as f:
             json.dump(keys_data, f, indent=2)
@@ -46,7 +45,7 @@ def setup_authentication() -> BearerAuthProvider:
         first_run = True
     
     # Create auth provider
-    auth = BearerAuthProvider(
+    auth = JWTVerifier(
         public_key=public_key,
         issuer="filesystem-mcp",
         audience="filesystem-mcp"

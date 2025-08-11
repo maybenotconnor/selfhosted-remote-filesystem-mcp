@@ -8,7 +8,11 @@ A secure, self-hostable MCP server that gives AI assistants access to your files
 - **Secure by Default**: JWT authentication always enabled
 - **Simple**: Just mount your data directory and go
 - **Persistent**: Tokens survive container restarts
-- **Production Ready**: Built for real-world use
+
+## 📋 Requirements
+
+- Docker and Docker Compose installed
+- An MCP-compatible client (Claude Desktop, Continue.dev, etc.)
 
 ## 🚀 Quick Start (3 Steps)
 
@@ -244,6 +248,7 @@ async def main():
 
 asyncio.run(main())
 ```
+
 
 ## 📝 License
 
