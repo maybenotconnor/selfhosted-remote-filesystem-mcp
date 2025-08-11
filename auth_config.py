@@ -84,18 +84,19 @@ def setup_authentication() -> BearerAuthProvider:
             f.write("=" * 60 + "\n")
             f.write("Use in Authorization header: Bearer <token>\n")
         
-        # Display tokens on first run
+        # Set secure permissions on tokens file
+        tokens_file.chmod(0o600)
+        
+        # Display secure message (never log actual tokens)
         if first_run:
             print("\n" + "━" * 60)
-            print("🔑 AUTHENTICATION TOKENS (save these!)")
+            print("🔐 AUTHENTICATION SETUP COMPLETE")
             print("━" * 60)
-            print("\nAdmin Token (full access):")
-            print(tokens['admin'])
-            print("\nRead-Only Token:")
-            print(tokens['readonly'])
-            print("\n" + "━" * 60)
-            print(f"💾 Tokens saved to: {tokens_file}")
-            print("━" * 60 + "\n")
+            print("\n✅ Tokens generated and saved securely")
+            print(f"📁 Location: {tokens_file}")
+            print("\n🔑 To retrieve your tokens, run:")
+            print(f"   docker exec {os.getenv('HOSTNAME', 'filesystem-mcp')} cat /config/tokens.txt")
+            print("\n" + "━" * 60 + "\n")
     else:
         print(f"💡 Using existing tokens from: {tokens_file}")
     

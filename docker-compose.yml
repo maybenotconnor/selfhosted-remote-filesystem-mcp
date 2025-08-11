@@ -11,8 +11,15 @@ services:
       - "8080:8080"
     
     volumes:
-      # Your data directory - this is what the MCP server can access
+      # Mount your directories here - you can mount multiple directories as subdirectories
+      # Single directory example:
       - ./data:/data
+      
+      # Multiple directories example (uncomment and modify as needed):
+      # - ./documents:/data/documents
+      # - ./projects:/data/projects
+      # - ./photos:/data/photos
+      # - /home/user/important:/data/important
       
       # Configuration directory for persistent JWT keys (auto-generated)
       - ./config:/config

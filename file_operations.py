@@ -421,3 +421,213 @@ async def get_file_info(path: str) -> Dict[str, Any]:
         info['dir_count'] = sum(1 for item in items if item.is_dir())
     
     return info
+
+
+async def read_file_lines(path: str, head: Optional[int] = None, tail: Optional[int] = None, 
+                         encoding: str = 'utf-8') -> Dict[str, Any]:
+    """Read specific lines from a file (head or tail).
+    
+    Args:
+        path: Validated absolute path to the file
+        head: Number of lines from the beginning
+        tail: Number of lines from the end
+        encoding: Text encoding
+        
+    Returns:
+        Dictionary with partial file contents
+    """
+    file_path = pathlib.Path(path)
+    
+    if not file_path.exists():
+        raise FileNotFoundError(f"File not found: {path}")
+    
+    if not file_path.is_file():
+        raise ValueError(f"Path is not a file: {path}")
+    
+    # Read file lines
+    async with aiofiles.open(path, 'r', encoding=encoding) as f:
+        lines = await f.readlines()
+    
+    if head:
+        selected_lines = lines[:head]
+    elif tail:
+        selected_lines = lines[-tail:]
+    else:
+        selected_lines = lines
+    
+    content = ''.join(selected_lines)
+    
+    return {
+        "type": "text",
+        "content": content,
+        "mime_type": "text/plain",
+        "encoding": encoding,
+        "lines": len(selected_lines),
+        "total_lines": len(lines)
+    }
+
+
+async def read_media_file(path: str) -> Dict[str, Any]:
+    """Read a media file and return base64 encoded data.
+    
+    Args:
+        path: Validated absolute path to the media file
+        
+    Returns:
+        Dictionary with base64 encoded content and metadata
+    """
+    file_path = pathlib.Path(path)
+    
+    if not file_path.exists():
+        raise FileNotFoundError(f"File not found: {path}")
+    
+    if not file_path.is_file():
+        raise ValueError(f"Path is not a file: {path}")
+    
+    # Get file extension and determine MIME type
+    ext = file_path.suffix.lower()
+    
+    # Define supported media types
+    media_types = {
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp',
+        '.bmp': 'image/bmp',
+        '.svg': 'image/svg+xml',
+        '.mp3': 'audio/mpeg',
+        '.wav': 'audio/wav',
+        '.ogg': 'audio/ogg',
+        '.flac': 'audio/flac',
+    }
+    
+    mime_type = media_types.get(ext, 'application/octet-stream')
+    
+    # Read file as binary
+    async with aiofiles.open(path, 'rb') as f:
+        content = await f.read()
+    
+    # Encode to base64
+    encoded = base64.b64encode(content).decode('utf-8')
+    
+    # Determine type for MCP
+    if mime_type.startswith('image/'):
+        content_type = 'image'
+    elif mime_type.startswith('audio/'):
+        content_type = 'audio'
+    else:
+        content_type = 'blob'
+    
+    return {
+        "type": content_type,
+        "data": encoded,
+        "mimeType": mime_type,
+        "size": len(content)
+    }
+
+
+async def list_directory_with_sizes(path: str, sort_by: str = "name") -> Dict[str, Any]:
+    """List directory with file sizes and sorting.
+    
+    Args:
+        path: Validated absolute path to directory
+        sort_by: Sort by 'name' or 'size'
+        
+    Returns:
+        Dictionary with formatted listing and summary
+    """
+    dir_path = pathlib.Path(path)
+    
+    if not dir_path.exists():
+        raise FileNotFoundError(f"Directory not found: {path}")
+    
+    if not dir_path.is_dir():
+        raise ValueError(f"Path is not a directory: {path}")
+    
+    # Get all entries with details
+    entries = []
+    for item in dir_path.iterdir():
+        entry_info = _get_file_info(item)
+        entries.append(entry_info)
+    
+    # Sort entries
+    if sort_by == "size":
+        entries.sort(key=lambda x: x.get('size', 0) if not x['is_directory'] else 0, reverse=True)
+    else:  # sort by name
+        entries.sort(key=lambda x: x['name'])
+    
+    # Format output
+    formatted_entries = []
+    total_size = 0
+    file_count = 0
+    dir_count = 0
+    
+    for entry in entries:
+        if entry['is_directory']:
+            formatted_entries.append(f"[DIR]  {entry['name']:<30}")
+            dir_count += 1
+        else:
+            size_str = format_size(entry.get('size', 0))
+            formatted_entries.append(f"[FILE] {entry['name']:<30} {size_str:>10}")
+            total_size += entry.get('size', 0)
+            file_count += 1
+    
+    # Add summary
+    summary = [
+        "",
+        f"Total: {file_count} files, {dir_count} directories",
+        f"Combined size: {format_size(total_size)}"
+    ]
+    
+    return {
+        "entries": formatted_entries,
+        "summary": summary,
+        "formatted": "\n".join(formatted_entries + summary)
+    }
+
+
+def format_size(bytes: int) -> str:
+    """Format bytes into human readable size."""
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if bytes < 1024.0:
+            return f"{bytes:.2f} {unit}"
+        bytes /= 1024.0
+    return f"{bytes:.2f} PB"
+
+
+async def build_directory_tree(path: str) -> List[Dict[str, Any]]:
+    """Build a recursive directory tree structure.
+    
+    Args:
+        path: Validated absolute path to directory
+        
+    Returns:
+        List of tree entries with name, type, and children
+    """
+    dir_path = pathlib.Path(path)
+    
+    if not dir_path.exists():
+        raise FileNotFoundError(f"Directory not found: {path}")
+    
+    if not dir_path.is_dir():
+        raise ValueError(f"Path is not a directory: {path}")
+    
+    tree = []
+    
+    for item in sorted(dir_path.iterdir(), key=lambda x: (not x.is_dir(), x.name)):
+        entry = {
+            "name": item.name,
+            "type": "directory" if item.is_dir() else "file"
+        }
+        
+        if item.is_dir():
+            # Recursively build children
+            try:
+                entry["children"] = await build_directory_tree(str(item))
+            except (PermissionError, OSError):
+                entry["children"] = []  # Empty if can't access
+        
+        tree.append(entry)
+    
+    return tree
